@@ -1,0 +1,5 @@
+{
+  "name": "Burger Manager",
+  "description": "Sistema de gestÃ£o para hamburgueria com PDV, painel administrativo e integraÃ§Ã£o de impressÃ£o.",
+  "requestFramePermissions": []
+}
