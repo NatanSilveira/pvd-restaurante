@@ -128,9 +128,9 @@ export default function WaiterModule() {
   );
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-64px)] bg-zinc-950 text-zinc-100">
+    <div className="flex flex-col md:flex-row min-h-[calc(100vh-64px)] md:h-[calc(100vh-64px)] bg-zinc-950 text-zinc-100">
       {/* Menu Section */}
-      <div className="flex-1 p-6 overflow-y-auto border-r border-zinc-800">
+      <div className="flex-1 p-6 md:overflow-y-auto border-b md:border-b-0 md:border-r border-zinc-800">
         <div className="mb-6">
           <h2 className="text-xl font-bold mb-4">Cardápio</h2>
           <div className="relative">
@@ -163,7 +163,7 @@ export default function WaiterModule() {
       </div>
 
       {/* Order Section */}
-      <div className="w-full md:w-[400px] lg:w-[450px] bg-zinc-900 flex flex-col h-full">
+      <div className="w-full md:w-[400px] lg:w-[450px] bg-zinc-900 flex flex-col md:h-full">
         <div className="p-6 border-b border-zinc-800">
           <h2 className="text-xl font-bold mb-4">Nova Comanda</h2>
           
