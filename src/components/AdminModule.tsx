@@ -75,7 +75,8 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-64px)] bg-zinc-950 text-zinc-100">
+    <>
+    <div className="flex h-[calc(100vh-64px)] bg-zinc-950 text-zinc-100 print:hidden">
       {/* Sidebar */}
       <div className="w-64 bg-zinc-900 border-r border-zinc-800 p-4 flex flex-col gap-2">
         <button 
@@ -233,13 +234,13 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Modal de Impressão (Simulação do Cupom) */}
+      {/* Modal de Impressão (Cupom) */}
       {viewingReceipt && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
-          <div className="bg-white text-black p-6 w-full max-w-[300px] font-mono text-sm relative shadow-2xl">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 print:static print:bg-white print:block print:p-0">
+          <div className="bg-white text-black p-6 w-full max-w-[300px] font-mono text-sm relative shadow-2xl print:shadow-none print:p-0 print:w-[80mm] print:max-w-[80mm] print:m-0">
             <button 
               onClick={() => setViewingReceipt(null)}
-              className="absolute -top-10 right-0 text-white hover:text-orange-500 font-sans font-bold"
+              className="absolute -top-10 right-0 text-white hover:text-orange-500 font-sans font-bold print:hidden"
             >
               Fechar (X)
             </button>
@@ -275,10 +276,21 @@ export default function AdminDashboard() {
             <div className="text-center mt-8 text-xs">
               <p>*** FIM DA IMPRESSÃO ***</p>
             </div>
+
+            <div className="mt-6 flex gap-2 print:hidden">
+              <button 
+                onClick={() => window.print()}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 text-zinc-950 font-bold py-3 rounded-lg flex items-center justify-center gap-2"
+              >
+                <Printer className="w-5 h-5" />
+                Imprimir
+              </button>
+            </div>
           </div>
         </div>
       )}
     </div>
+    </>
   );
 }
 
