@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, Users, Menu as MenuIcon, DollarSign, LogOut, Printer } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
+import { printReceipt } from '../lib/printReceipt';
 
 export default function AdminDashboard() {
   const { token } = useAuth();
@@ -76,7 +77,7 @@ export default function AdminDashboard() {
 
   return (
     <>
-    <div className="flex h-[calc(100vh-64px)] bg-zinc-950 text-zinc-100 print:hidden">
+    <div className="flex h-[calc(100vh-64px)] bg-zinc-950 text-zinc-100">
       {/* Sidebar */}
       <div className="w-64 bg-zinc-900 border-r border-zinc-800 p-4 flex flex-col gap-2">
         <button 
@@ -236,11 +237,11 @@ export default function AdminDashboard() {
 
       {/* Modal de Impressão (Cupom) */}
       {viewingReceipt && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 print:static print:bg-white print:block print:p-0">
-          <div className="bg-white text-black p-6 w-full max-w-[300px] font-mono text-sm relative shadow-2xl print:shadow-none print:p-0 print:w-[80mm] print:max-w-[80mm] print:m-0">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+          <div className="bg-white text-black p-6 w-full max-w-[300px] font-mono text-sm relative shadow-2xl">
             <button 
               onClick={() => setViewingReceipt(null)}
-              className="absolute -top-10 right-0 text-white hover:text-orange-500 font-sans font-bold print:hidden"
+              className="absolute -top-10 right-0 text-white hover:text-orange-500 font-sans font-bold"
             >
               Fechar (X)
             </button>
@@ -277,9 +278,9 @@ export default function AdminDashboard() {
               <p>*** FIM DA IMPRESSÃO ***</p>
             </div>
 
-            <div className="mt-6 flex gap-2 print:hidden">
+            <div className="mt-6 flex gap-2">
               <button 
-                onClick={() => window.print()}
+                onClick={() => printReceipt(viewingReceipt)}
                 className="flex-1 bg-orange-500 hover:bg-orange-600 text-zinc-950 font-bold py-3 rounded-lg flex items-center justify-center gap-2"
               >
                 <Printer className="w-5 h-5" />

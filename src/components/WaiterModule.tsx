@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { Plus, Minus, Trash2, Printer, Send, Search, Utensils } from 'lucide-react';
+import { printReceipt } from '../lib/printReceipt';
 
 type MenuItem = {
   id: number;
@@ -129,7 +130,7 @@ export default function WaiterModule() {
 
   return (
     <>
-    <div className="flex flex-col md:flex-row min-h-[calc(100vh-64px)] md:h-[calc(100vh-64px)] bg-zinc-950 text-zinc-100 print:hidden">
+    <div className="flex flex-col md:flex-row min-h-[calc(100vh-64px)] md:h-[calc(100vh-64px)] bg-zinc-950 text-zinc-100">
       {/* Menu Section */}
       <div className="flex-1 p-6 md:overflow-y-auto border-b md:border-b-0 md:border-r border-zinc-800">
         <div className="mb-6">
@@ -259,11 +260,11 @@ export default function WaiterModule() {
 
       {/* Modal de Impressão (Cupom) */}
       {receiptData && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 print:static print:bg-white print:block print:p-0">
-          <div className="bg-white text-black p-6 w-full max-w-[300px] font-mono text-sm relative shadow-2xl print:shadow-none print:p-0 print:w-[80mm] print:max-w-[80mm] print:m-0">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+          <div className="bg-white text-black p-6 w-full max-w-[300px] font-mono text-sm relative shadow-2xl">
             <button 
               onClick={() => setReceiptData(null)}
-              className="absolute -top-10 right-0 text-white hover:text-orange-500 font-sans font-bold print:hidden"
+              className="absolute -top-10 right-0 text-white hover:text-orange-500 font-sans font-bold"
             >
               Fechar (X)
             </button>
@@ -300,9 +301,9 @@ export default function WaiterModule() {
               <p>*** FIM DA IMPRESSÃO ***</p>
             </div>
 
-            <div className="mt-6 flex gap-2 print:hidden">
+            <div className="mt-6 flex gap-2">
               <button 
-                onClick={() => window.print()}
+                onClick={() => printReceipt(receiptData)}
                 className="flex-1 bg-orange-500 hover:bg-orange-600 text-zinc-950 font-bold py-3 rounded-lg flex items-center justify-center gap-2"
               >
                 <Printer className="w-5 h-5" />
