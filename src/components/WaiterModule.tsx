@@ -19,7 +19,7 @@ type OrderItem = {
 };
 
 export default function WaiterModule() {
-  const { user, token } = useAuth();
+  const { user, token, logout } = useAuth();
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [customerName, setCustomerName] = useState('');
   const [orderType, setOrderType] = useState<'Local' | 'Delivery'>('Local');
@@ -30,11 +30,15 @@ export default function WaiterModule() {
 
   useEffect(() => {
     fetch('/api/menu', { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(res => res.json())
+      .then(res => {
+        if (res.status === 401 || res.status === 403) logout();
+        return res.json();
+      })
       .then(data => {
         if (Array.isArray(data)) setMenu(data);
-      });
-  }, [token]);
+      })
+      .catch(() => {});
+  }, [token, logout]);
 
   const addToOrder = (item: MenuItem) => {
     const existing = orderItems.find(i => i.menu_item_id === item.id && i.notes === '');
@@ -113,6 +117,8 @@ export default function WaiterModule() {
         });
         setCustomerName('');
         setOrderItems([]);
+      } else if (res.status === 401 || res.status === 403) {
+        logout();
       } else {
         alert('Erro ao enviar pedido');
       }

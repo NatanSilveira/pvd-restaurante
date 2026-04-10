@@ -1,23 +1,55 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LayoutDashboard, Users, Menu as MenuIcon, DollarSign, LogOut, Printer } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { printReceipt } from '../lib/printReceipt';
 
 export default function AdminDashboard() {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'menu' | 'finance'>('dashboard');
   const [orders, setOrders] = useState<any[]>([]);
   const [completingOrder, setCompletingOrder] = useState<number | null>(null);
   const [cancelingOrder, setCancelingOrder] = useState<number | null>(null);
   const [viewingReceipt, setViewingReceipt] = useState<any | null>(null);
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [autoPrintEnabled, setAutoPrintEnabled] = useState(false);
+  const lastOrderId = useRef<number | null>(null);
 
   const fetchOrders = () => {
     fetch('/api/orders', { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(res => res.json())
+      .then(res => {
+        if (res.status === 401 || res.status === 403) logout();
+        return res.json();
+      })
       .then(data => {
-        if (Array.isArray(data)) setOrders(data);
-      });
+        if (Array.isArray(data)) {
+          setOrders(data);
+          
+          if (data.length > 0) {
+            const maxId = Math.max(...data.map(o => o.id));
+            
+            // Se for a primeira vez carregando, apenas define o último ID
+            if (lastOrderId.current === null) {
+              lastOrderId.current = maxId;
+            } 
+            // Se já carregou antes e tem pedido novo, e a impressão automática está ligada
+            else if (maxId > lastOrderId.current) {
+              const newOrders = data.filter(o => o.id > lastOrderId.current!);
+              
+              if (autoPrintEnabled) {
+                // Imprime os pedidos novos um por um com um pequeno atraso
+                newOrders.forEach((order, index) => {
+                  setTimeout(() => {
+                    printReceipt(order);
+                  }, index * 3000);
+                });
+              }
+              
+              lastOrderId.current = maxId;
+            }
+          }
+        }
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -114,7 +146,19 @@ export default function AdminDashboard() {
       <div className="flex-1 p-8 overflow-y-auto">
         {activeTab === 'dashboard' && (
           <div>
-            <h2 className="text-2xl font-bold mb-6">Pedidos em Andamento</h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Pedidos em Andamento</h2>
+              
+              <label className="flex items-center gap-2 cursor-pointer bg-zinc-900 px-4 py-2 rounded-lg border border-zinc-800">
+                <input 
+                  type="checkbox" 
+                  checked={autoPrintEnabled}
+                  onChange={(e) => setAutoPrintEnabled(e.target.checked)}
+                  className="w-4 h-4 accent-orange-500"
+                />
+                <span className="text-sm font-medium">Impressão Automática (Caixa)</span>
+              </label>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {orders.filter(o => o.status === 'pending' || o.status === 'preparing').map(order => (
                 <div key={order.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
@@ -296,7 +340,7 @@ export default function AdminDashboard() {
 }
 
 function FinanceModule() {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const [report, setReport] = useState<any>(null);
   const [date, setDate] = useState(() => {
     const now = new Date();
@@ -311,9 +355,13 @@ function FinanceModule() {
 
   useEffect(() => {
     fetch(`/api/reports/commercial-day?date=${date}`, { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(res => res.json())
-      .then(data => setReport(data));
-  }, [date, token]);
+      .then(res => {
+        if (res.status === 401 || res.status === 403) logout();
+        return res.json();
+      })
+      .then(data => setReport(data))
+      .catch(() => {});
+  }, [date, token, logout]);
 
   return (
     <div>
@@ -379,7 +427,7 @@ function FinanceModule() {
 }
 
 function MenuManager() {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -388,10 +436,14 @@ function MenuManager() {
 
   const fetchMenu = () => {
     fetch('/api/menu', { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(res => res.json())
+      .then(res => {
+        if (res.status === 401 || res.status === 403) logout();
+        return res.json();
+      })
       .then(data => {
         if (Array.isArray(data)) setItems(data);
-      });
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -411,8 +463,11 @@ function MenuManager() {
     if (res.ok) {
       setName(''); setCategory(''); setPrice('');
       fetchMenu();
+    } else if (res.status === 401 || res.status === 403) {
+      logout();
     } else {
-      alert('Erro ao adicionar item ao cardápio');
+      const data = await res.json().catch(() => ({}));
+      alert(`Erro ao adicionar item ao cardápio: ${data.error || res.statusText}`);
     }
   };
 
@@ -495,7 +550,7 @@ function MenuManager() {
 }
 
 function UserManager() {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -504,10 +559,14 @@ function UserManager() {
 
   const fetchUsers = () => {
     fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(res => res.json())
+      .then(res => {
+        if (res.status === 401 || res.status === 403) logout();
+        return res.json();
+      })
       .then(data => {
         if (Array.isArray(data)) setUsers(data);
-      });
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -527,8 +586,11 @@ function UserManager() {
     if (res.ok) {
       setUsername(''); setPassword('');
       fetchUsers();
+    } else if (res.status === 401 || res.status === 403) {
+      logout();
     } else {
-      alert('Erro ao adicionar usuário. Verifique se o nome já existe.');
+      const data = await res.json().catch(() => ({}));
+      alert(`Erro ao adicionar usuário: ${data.error || data.message || res.statusText}`);
     }
   };
 

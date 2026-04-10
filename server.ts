@@ -116,7 +116,8 @@ app.post('/api/users', authenticateToken, (req, res) => {
     const info = db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').run(username, hashedPassword, role);
     res.json({ success: true, id: info.lastInsertRowid });
   } catch (e) {
-    res.status(400).json({ success: false, message: 'Erro ao criar usuário' });
+    console.error('Error adding user:', e);
+    res.status(400).json({ success: false, message: 'Erro ao criar usuário', error: String(e) });
   }
 });
 
@@ -132,9 +133,14 @@ app.get('/api/menu', authenticateToken, (req, res) => {
 });
 
 app.post('/api/menu', authenticateToken, (req, res) => {
-  const { name, category, price } = req.body;
-  const info = db.prepare('INSERT INTO menu_items (name, category, price) VALUES (?, ?, ?)').run(name, category, price);
-  res.json({ success: true, id: info.lastInsertRowid });
+  try {
+    const { name, category, price } = req.body;
+    const info = db.prepare('INSERT INTO menu_items (name, category, price) VALUES (?, ?, ?)').run(name, category, price);
+    res.json({ success: true, id: info.lastInsertRowid });
+  } catch (error) {
+    console.error('Error adding menu item:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
 });
 
 app.put('/api/menu/:id', authenticateToken, (req, res) => {
