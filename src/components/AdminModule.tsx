@@ -11,6 +11,7 @@ export default function AdminDashboard() {
   const [cancelingOrder, setCancelingOrder] = useState<number | null>(null);
   const [viewingReceipt, setViewingReceipt] = useState<any | null>(null);
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [includeTip, setIncludeTip] = useState(true);
   const [autoPrintEnabled, setAutoPrintEnabled] = useState(false);
   const lastOrderId = useRef<number | null>(null);
 
@@ -79,18 +80,29 @@ export default function AdminDashboard() {
 
   const confirmCompleteOrder = async () => {
     if (!completingOrder) return;
+    const order = orders.find(o => o.id === completingOrder);
     const method = paymentMethod || 'Não Informado';
+    
+    let tipAmount = 0;
+    let finalTotal = order.total;
+    
+    if (includeTip) {
+      tipAmount = order.total * 0.10;
+      finalTotal = order.total + tipAmount;
+    }
+
     await fetch(`/api/orders/${completingOrder}/status`, {
       method: 'PUT',
       headers: { 
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ status: 'completed', payment_method: method })
+      body: JSON.stringify({ status: 'completed', payment_method: method, tip: tipAmount, total: finalTotal })
     });
-    setOrders(orders.map(o => o.id === completingOrder ? { ...o, status: 'completed', payment_method: method } : o));
+    setOrders(orders.map(o => o.id === completingOrder ? { ...o, status: 'completed', payment_method: method, tip: tipAmount, total: finalTotal } : o));
     setCompletingOrder(null);
     setPaymentMethod('');
+    setIncludeTip(true);
   };
 
   const confirmCancelOrder = async () => {
@@ -226,6 +238,36 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
             <h3 className="text-xl font-bold mb-4">Concluir Pedido #{completingOrder}</h3>
+            
+            <div className="mb-6 bg-zinc-950 p-4 rounded-lg border border-zinc-800">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-zinc-400">Subtotal</span>
+                <span className="font-medium">R$ {orders.find(o => o.id === completingOrder)?.total.toFixed(2)}</span>
+              </div>
+              
+              <label className="flex items-center justify-between cursor-pointer py-2">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    checked={includeTip}
+                    onChange={(e) => setIncludeTip(e.target.checked)}
+                    className="w-4 h-4 accent-orange-500"
+                  />
+                  <span className="text-sm">Incluir 10% de Gorjeta</span>
+                </div>
+                <span className="text-sm text-zinc-400">
+                  + R$ {(orders.find(o => o.id === completingOrder)?.total * 0.10).toFixed(2)}
+                </span>
+              </label>
+              
+              <div className="border-t border-zinc-800 mt-3 pt-3 flex justify-between items-center">
+                <span className="font-bold">Total a Cobrar</span>
+                <span className="text-xl font-bold text-orange-500">
+                  R$ {(orders.find(o => o.id === completingOrder)?.total * (includeTip ? 1.10 : 1)).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
             <label className="block text-sm text-zinc-400 mb-3">Selecione o Método de Pagamento</label>
             
             <div className="grid grid-cols-2 gap-3 mb-6">
@@ -249,6 +291,7 @@ export default function AdminDashboard() {
                 onClick={() => {
                   setCompletingOrder(null);
                   setPaymentMethod('');
+                  setIncludeTip(true);
                 }} 
                 className="px-4 py-2 text-zinc-400 hover:text-white"
               >
@@ -313,6 +356,19 @@ export default function AdminDashboard() {
             
             <div className="border-t border-dashed border-black my-2"></div>
             
+            {viewingReceipt.tip > 0 && (
+              <div className="mb-2 text-xs">
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span>R$ {(viewingReceipt.total - viewingReceipt.tip).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Gorjeta (10%):</span>
+                  <span>R$ {viewingReceipt.tip.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-between font-bold text-base mt-4">
               <span>TOTAL:</span>
               <span>R$ {viewingReceipt.total.toFixed(2)}</span>
@@ -381,10 +437,14 @@ function FinanceModule() {
 
       {report && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
               <div className="text-zinc-400 text-sm mb-2">Total Vendido</div>
               <div className="text-3xl font-bold text-white">R$ {report.total_revenue.toFixed(2)}</div>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
+              <div className="text-zinc-400 text-sm mb-2">Gorjetas (10%)</div>
+              <div className="text-3xl font-bold text-orange-500">R$ {(report.total_tips || 0).toFixed(2)}</div>
             </div>
             <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
               <div className="text-zinc-400 text-sm mb-2">Total de Pedidos</div>

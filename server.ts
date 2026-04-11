@@ -1,6 +1,6 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import Database from 'better-sqlite3';
+import { createClient } from '@libsql/client';
 import path from 'path';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -11,67 +11,11 @@ const JWT_SECRET = process.env.JWT_SECRET || 'burger-manager-super-secret-key';
 
 app.use(express.json());
 
-// Initialize SQLite Database
-const db = new Database('burger_manager.db');
-
-// Create tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    password TEXT,
-    role TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS menu_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    category TEXT,
-    price REAL,
-    active INTEGER DEFAULT 1
-  );
-
-  CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_name TEXT,
-    type TEXT, -- 'Local' or 'Delivery'
-    status TEXT, -- 'pending', 'preparing', 'completed', 'cancelled'
-    total REAL,
-    payment_method TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    waiter_id INTEGER,
-    commercial_date TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS order_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_id INTEGER,
-    menu_item_id INTEGER,
-    quantity INTEGER,
-    notes TEXT,
-    price REAL,
-    FOREIGN KEY(order_id) REFERENCES orders(id),
-    FOREIGN KEY(menu_item_id) REFERENCES menu_items(id)
-  );
-`);
-
-// Seed initial admin user if not exists
-const adminExists = db.prepare('SELECT * FROM users WHERE username = ?').get('admin');
-if (!adminExists) {
-  const hashedAdminPassword = bcrypt.hashSync('admin123', 10);
-  db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').run('admin', hashedAdminPassword, 'ADM');
-}
-
-// Seed initial menu items if empty
-const menuCount = db.prepare('SELECT COUNT(*) as count FROM menu_items').get() as { count: number };
-if (menuCount.count === 0) {
-  const insertMenu = db.prepare('INSERT INTO menu_items (name, category, price) VALUES (?, ?, ?)');
-  insertMenu.run('X-Burger', 'Lanches', 25.00);
-  insertMenu.run('X-Bacon', 'Lanches', 28.50);
-  insertMenu.run('Batata Frita', 'Porções', 15.00);
-  insertMenu.run('Coca-Cola 350ml', 'Bebidas', 6.00);
-  insertMenu.run('Suco de Laranja', 'Bebidas', 8.00);
-}
+// Initialize LibSQL Database (Turso or Local SQLite)
+const db = createClient({
+  url: process.env.DATABASE_URL || 'file:burger_manager.db',
+  authToken: process.env.DATABASE_AUTH_TOKEN,
+});
 
 // Middleware to verify JWT token
 const authenticateToken = (req: any, res: any, next: any) => {
@@ -90,11 +34,15 @@ const authenticateToken = (req: any, res: any, next: any) => {
 // API Routes
 
 // Auth
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
-  const user = db.prepare('SELECT id, username, password, role FROM users WHERE username = ?').get(username) as any;
+  const result = await db.execute({
+    sql: 'SELECT id, username, password, role FROM users WHERE username = ?',
+    args: [username]
+  });
+  const user = result.rows[0] as any;
   
-  if (user && bcrypt.compareSync(password, user.password)) {
+  if (user && bcrypt.compareSync(password, user.password as string)) {
     const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
     const { password: _, ...userWithoutPassword } = user;
     res.json({ success: true, user: userWithoutPassword, token });
@@ -104,75 +52,93 @@ app.post('/api/login', (req, res) => {
 });
 
 // Users
-app.get('/api/users', authenticateToken, (req, res) => {
-  const users = db.prepare('SELECT id, username, role FROM users').all();
-  res.json(users);
+app.get('/api/users', authenticateToken, async (req, res) => {
+  const result = await db.execute('SELECT id, username, role FROM users');
+  res.json(result.rows);
 });
 
-app.post('/api/users', authenticateToken, (req, res) => {
+app.post('/api/users', authenticateToken, async (req, res) => {
   const { username, password, role } = req.body;
   try {
     const hashedPassword = bcrypt.hashSync(password, 10);
-    const info = db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').run(username, hashedPassword, role);
-    res.json({ success: true, id: info.lastInsertRowid });
+    const info = await db.execute({
+      sql: 'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
+      args: [username, hashedPassword, role]
+    });
+    res.json({ success: true, id: Number(info.lastInsertRowid) });
   } catch (e) {
     console.error('Error adding user:', e);
     res.status(400).json({ success: false, message: 'Erro ao criar usuário', error: String(e) });
   }
 });
 
-app.delete('/api/users/:id', authenticateToken, (req, res) => {
-  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+app.delete('/api/users/:id', authenticateToken, async (req, res) => {
+  await db.execute({
+    sql: 'DELETE FROM users WHERE id = ?',
+    args: [req.params.id]
+  });
   res.json({ success: true });
 });
 
 // Menu
-app.get('/api/menu', authenticateToken, (req, res) => {
-  const items = db.prepare('SELECT * FROM menu_items WHERE active = 1').all();
-  res.json(items);
+app.get('/api/menu', authenticateToken, async (req, res) => {
+  const result = await db.execute('SELECT * FROM menu_items WHERE active = 1');
+  res.json(result.rows);
 });
 
-app.post('/api/menu', authenticateToken, (req, res) => {
+app.post('/api/menu', authenticateToken, async (req, res) => {
   try {
     const { name, category, price } = req.body;
-    const info = db.prepare('INSERT INTO menu_items (name, category, price) VALUES (?, ?, ?)').run(name, category, price);
-    res.json({ success: true, id: info.lastInsertRowid });
+    const info = await db.execute({
+      sql: 'INSERT INTO menu_items (name, category, price) VALUES (?, ?, ?)',
+      args: [name, category, price]
+    });
+    res.json({ success: true, id: Number(info.lastInsertRowid) });
   } catch (error) {
     console.error('Error adding menu item:', error);
     res.status(500).json({ success: false, error: String(error) });
   }
 });
 
-app.put('/api/menu/:id', authenticateToken, (req, res) => {
+app.put('/api/menu/:id', authenticateToken, async (req, res) => {
   const { name, category, price } = req.body;
-  db.prepare('UPDATE menu_items SET name = ?, category = ?, price = ? WHERE id = ?').run(name, category, price, req.params.id);
+  await db.execute({
+    sql: 'UPDATE menu_items SET name = ?, category = ?, price = ? WHERE id = ?',
+    args: [name, category, price, req.params.id]
+  });
   res.json({ success: true });
 });
 
-app.delete('/api/menu/:id', authenticateToken, (req, res) => {
-  db.prepare('UPDATE menu_items SET active = 0 WHERE id = ?').run(req.params.id);
+app.delete('/api/menu/:id', authenticateToken, async (req, res) => {
+  await db.execute({
+    sql: 'UPDATE menu_items SET active = 0 WHERE id = ?',
+    args: [req.params.id]
+  });
   res.json({ success: true });
 });
 
 // Orders
-app.get('/api/orders', authenticateToken, (req, res) => {
-  const orders = db.prepare('SELECT * FROM orders ORDER BY created_at DESC LIMIT 50').all();
-  const ordersWithItems = orders.map((order: any) => {
-    order.items = db.prepare(`
-      SELECT oi.*, m.name 
-      FROM order_items oi 
-      JOIN menu_items m ON oi.menu_item_id = m.id 
-      WHERE oi.order_id = ?
-    `).all(order.id);
+app.get('/api/orders', authenticateToken, async (req, res) => {
+  const result = await db.execute('SELECT * FROM orders ORDER BY created_at DESC LIMIT 50');
+  const ordersWithItems = await Promise.all(result.rows.map(async (order: any) => {
+    const itemsResult = await db.execute({
+      sql: `
+        SELECT oi.*, m.name 
+        FROM order_items oi 
+        JOIN menu_items m ON oi.menu_item_id = m.id 
+        WHERE oi.order_id = ?
+      `,
+      args: [order.id]
+    });
+    order.items = itemsResult.rows;
     return order;
-  });
+  }));
   res.json(ordersWithItems);
 });
 
-app.post('/api/orders', authenticateToken, (req, res) => {
+app.post('/api/orders', authenticateToken, async (req, res) => {
   const { customer_name, type, items, waiter_id, payment_method } = req.body;
   
-  // Calculate commercial date (e.g., 18:00 to 05:00 is one day) using America/Sao_Paulo timezone
   const now = new Date();
   const spTimeStr = now.toLocaleString('en-US', {timeZone: 'America/Sao_Paulo', hour12: false});
   const spDate = new Date(spTimeStr);
@@ -189,83 +155,25 @@ app.post('/api/orders', authenticateToken, (req, res) => {
     total += item.price * item.quantity;
   });
 
-  const insertOrder = db.transaction(() => {
-    const info = db.prepare('INSERT INTO orders (customer_name, type, status, total, payment_method, waiter_id, commercial_date) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
-      customer_name, type, 'pending', total, payment_method || '', waiter_id, commercialDateStr
-    );
-    
-    const orderId = info.lastInsertRowid;
-    
-    const insertItem = db.prepare('INSERT INTO order_items (order_id, menu_item_id, quantity, notes, price) VALUES (?, ?, ?, ?, ?)');
-    items.forEach((item: any) => {
-      insertItem.run(orderId, item.menu_item_id, item.quantity, item.notes || '', item.price);
-    });
-    
-    return orderId;
-  });
-
   try {
-    const orderId = insertOrder();
+    const transaction = await db.transaction('write');
     
-    // Trigger Print
-    console.log(`--- PRINTING ORDER #${orderId} ---`);
-    console.log(`Customer: ${customer_name} (${type})`);
-    items.forEach((item: any) => {
-      console.log(`${item.quantity}x ${item.name} - Obs: ${item.notes}`);
+    const info = await transaction.execute({
+      sql: 'INSERT INTO orders (customer_name, type, status, total, payment_method, waiter_id, commercial_date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      args: [customer_name, type, 'pending', total, payment_method || '', waiter_id, commercialDateStr]
     });
-    console.log(`---------------------------`);
-
-    // Actual ESC/POS integration (commented out/mocked for cloud environment)
-    /*
-    try {
-      const escpos = require('escpos');
-      escpos.Network = require('escpos-network');
-      
-      // Replace with your Elgin i8 IP address
-      const device = new escpos.Network('192.168.1.100', 9100);
-      const printer = new escpos.Printer(device, { encoding: "860" });
-
-      device.open((error: any) => {
-        if (error) {
-          console.error('Erro na impressora:', error);
-          return;
-        }
-
-        printer
-          .font('a')
-          .align('ct')
-          .style('b')
-          .size(2, 2)
-          .text('HAMBURGUERIA')
-          .size(1, 1)
-          .text(`Pedido #${orderId}`)
-          .text(`Tipo: ${type}`)
-          .text(`Cliente: ${customer_name}`)
-          .drawLine()
-          .align('lt');
-
-        items.forEach((item: any) => {
-          printer.style('b').text(`${item.quantity}x ${item.name}`);
-          if (item.notes) {
-            printer.style('normal').text(`  * Obs: ${item.notes}`);
-          }
-        });
-
-        printer
-          .drawLine()
-          .align('rt')
-          .style('b')
-          .size(1, 1)
-          .text(`TOTAL: R$ ${total.toFixed(2)}`)
-          .feed(3)
-          .cut()
-          .close();
+    
+    const orderId = Number(info.lastInsertRowid);
+    
+    for (const item of items) {
+      await transaction.execute({
+        sql: 'INSERT INTO order_items (order_id, menu_item_id, quantity, notes, price) VALUES (?, ?, ?, ?, ?)',
+        args: [orderId, item.menu_item_id, item.quantity, item.notes || '', item.price]
       });
-    } catch (printErr) {
-      console.error('Erro ao inicializar impressora:', printErr);
     }
-    */
-
+    
+    await transaction.commit();
+    
     res.json({ success: true, id: orderId });
   } catch (e) {
     console.error(e);
@@ -273,30 +181,41 @@ app.post('/api/orders', authenticateToken, (req, res) => {
   }
 });
 
-app.put('/api/orders/:id/status', authenticateToken, (req, res) => {
-  const { status, payment_method } = req.body;
+app.put('/api/orders/:id/status', authenticateToken, async (req, res) => {
+  const { status, payment_method, tip, total } = req.body;
   if (payment_method) {
-    db.prepare('UPDATE orders SET status = ?, payment_method = ? WHERE id = ?').run(status, payment_method, req.params.id);
+    await db.execute({
+      sql: 'UPDATE orders SET status = ?, payment_method = ?, tip = ?, total = ? WHERE id = ?',
+      args: [status, payment_method, tip || 0, total, req.params.id]
+    });
   } else {
-    db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, req.params.id);
+    await db.execute({
+      sql: 'UPDATE orders SET status = ? WHERE id = ?',
+      args: [status, req.params.id]
+    });
   }
   res.json({ success: true });
 });
 
 // Financial Reports
-app.get('/api/reports/commercial-day', authenticateToken, (req, res) => {
+app.get('/api/reports/commercial-day', authenticateToken, async (req, res) => {
   const { date } = req.query; // YYYY-MM-DD
   if (!date) return res.status(400).json({ error: 'Date is required' });
 
-  const orders = db.prepare('SELECT * FROM orders WHERE commercial_date = ? AND status != ?').all(date, 'cancelled') as any[];
+  const result = await db.execute({
+    sql: 'SELECT * FROM orders WHERE commercial_date = ? AND status != ?',
+    args: [date as string, 'cancelled']
+  });
+  const orders = result.rows;
   
-  const total = orders.reduce((sum: number, order: any) => sum + order.total, 0);
+  const total = orders.reduce((sum: number, order: any) => sum + (order.total as number), 0);
+  const totalTips = orders.reduce((sum: number, order: any) => sum + ((order.tip as number) || 0), 0);
   const ticketMedio = orders.length > 0 ? total / orders.length : 0;
   
   const paymentMethods: Record<string, number> = {};
   orders.forEach((order: any) => {
     if (order.payment_method) {
-      paymentMethods[order.payment_method] = (paymentMethods[order.payment_method] || 0) + order.total;
+      paymentMethods[order.payment_method] = (paymentMethods[order.payment_method] || 0) + (order.total as number);
     }
   });
 
@@ -304,12 +223,91 @@ app.get('/api/reports/commercial-day', authenticateToken, (req, res) => {
     date,
     total_orders: orders.length,
     total_revenue: total,
+    total_tips: totalTips,
     average_ticket: ticketMedio,
     payment_methods: paymentMethods
   });
 });
 
+async function initializeDatabase() {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE,
+      password TEXT,
+      role TEXT
+    );
+  `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS menu_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      category TEXT,
+      price REAL,
+      active INTEGER DEFAULT 1
+    );
+  `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_name TEXT,
+      type TEXT,
+      status TEXT,
+      total REAL,
+      payment_method TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      waiter_id INTEGER,
+      commercial_date TEXT,
+      tip REAL DEFAULT 0
+    );
+  `);
+  try {
+    await db.execute('ALTER TABLE orders ADD COLUMN tip REAL DEFAULT 0');
+  } catch (e) {}
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER,
+      menu_item_id INTEGER,
+      quantity INTEGER,
+      notes TEXT,
+      price REAL,
+      FOREIGN KEY(order_id) REFERENCES orders(id),
+      FOREIGN KEY(menu_item_id) REFERENCES menu_items(id)
+    );
+  `);
+
+  const adminExists = await db.execute({
+    sql: 'SELECT * FROM users WHERE username = ?',
+    args: ['admin']
+  });
+  if (adminExists.rows.length === 0) {
+    const hashedAdminPassword = bcrypt.hashSync('admin123', 10);
+    await db.execute({
+      sql: 'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
+      args: ['admin', hashedAdminPassword, 'ADM']
+    });
+  }
+
+  const menuCount = await db.execute('SELECT COUNT(*) as count FROM menu_items');
+  if (menuCount.rows[0].count === 0) {
+    const insertMenu = async (name: string, category: string, price: number) => {
+      await db.execute({
+        sql: 'INSERT INTO menu_items (name, category, price) VALUES (?, ?, ?)',
+        args: [name, category, price]
+      });
+    };
+    await insertMenu('X-Burger', 'Lanches', 25.00);
+    await insertMenu('X-Bacon', 'Lanches', 28.50);
+    await insertMenu('Batata Frita', 'Porções', 15.00);
+    await insertMenu('Coca-Cola 350ml', 'Bebidas', 6.00);
+    await insertMenu('Suco de Laranja', 'Bebidas', 8.00);
+  }
+}
+
 async function startServer() {
+  await initializeDatabase();
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

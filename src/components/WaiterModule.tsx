@@ -298,6 +298,19 @@ export default function WaiterModule() {
             
             <div className="border-t border-dashed border-black my-2"></div>
             
+            {receiptData.tip > 0 && (
+              <div className="mb-2 text-xs">
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span>R$ {(receiptData.total - receiptData.tip).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Gorjeta (10%):</span>
+                  <span>R$ {receiptData.tip.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-between font-bold text-base mt-4">
               <span>TOTAL:</span>
               <span>R$ {receiptData.total.toFixed(2)}</span>

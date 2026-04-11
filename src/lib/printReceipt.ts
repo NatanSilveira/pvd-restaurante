@@ -58,6 +58,17 @@ export const printReceipt = (receiptData: any) => {
         
         <div class="divider"></div>
         
+        ${receiptData.tip ? `
+        <div class="item" style="margin-bottom: 4px;">
+          <span class="name" style="padding-left: 0;">Subtotal:</span>
+          <span class="price">R$ ${(receiptData.total - receiptData.tip).toFixed(2)}</span>
+        </div>
+        <div class="item" style="margin-bottom: 4px;">
+          <span class="name" style="padding-left: 0;">Gorjeta (10%):</span>
+          <span class="price">R$ ${receiptData.tip.toFixed(2)}</span>
+        </div>
+        ` : ''}
+
         <div class="total">
           <span>TOTAL:</span>
           <span>R$ ${receiptData.total.toFixed(2)}</span>
