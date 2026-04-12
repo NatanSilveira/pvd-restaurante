@@ -31,6 +31,7 @@ export const printReceipt = (receiptData: any) => {
             color: #000;
             background: #fff;
             font-size: 12px;
+            font-weight: bold;
           }
           .text-center { text-align: center; }
           .font-bold { font-weight: bold; }
